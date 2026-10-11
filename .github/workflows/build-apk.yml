@@ -21,9 +21,10 @@ jobs:
       - name: Build the APK
         run: |
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon --stacktrace
+          ./gradlew assembleRelease --no-daemon --stacktrace -PbuildNumber=${{ github.run_number }}
           mkdir -p out
           cp app/build/outputs/apk/release/app-release.apk out/SpotiopsII.apk
+          cp app/src/main/assets/index.html out/SpotiopsII.html
 
       - uses: actions/upload-artifact@v4
         with:
@@ -34,7 +35,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "build-${{ github.run_number }}" out/SpotiopsII.apk \
+          gh release create "build-${{ github.run_number }}" out/SpotiopsII.apk out/SpotiopsII.html \
             --title "Spotiops II (build ${{ github.run_number }})" \
-            --notes "Download SpotiopsII.apk below and open it on your phone to install." \
+            --notes "Open SpotiopsII.apk on your phone to install, or use Update in the app's settings. SpotiopsII.html is the browser version." \
             --latest

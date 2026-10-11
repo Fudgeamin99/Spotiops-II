@@ -330,6 +330,10 @@ main > .topbar, #view > * { position: relative; }
   background: repeating-linear-gradient(-45deg, var(--panel-3) 0 6px, var(--panel-2) 6px 12px);
   border: 1px solid var(--line); text-shadow: none;
 }
+.upd-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.upd-row a.btn { text-decoration: none; }
+.avatar { position: relative; }
+.avatar.has-update::after { content: ""; position: absolute; top: 3px; right: 3px; width: 8px; height: 8px; border-radius: 50%; background: #4cd28a; box-shadow: 0 0 6px #4cd28a; }
 .sw-title { display: block; }
 .sw-note { display: block; margin-top: 4px; font: 13px/1.35 var(--font-body); letter-spacing: 0; text-transform: none; color: var(--muted); }
 .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; cursor: pointer; padding: 6px 0; }
@@ -1665,6 +1669,71 @@ function offlineView(r) {
   return null;
 }
 
+/* ============ app updates (Android app) ============ */
+const REPO = "Fudgeamin99/Spotiops-II";
+const UPD = { latest: null, checking: false, status: "", detail: "" };
+const canSelfUpdate = () => !!(NATIVE && NATIVE.installUpdate);
+function appBuild() { try { return canSelfUpdate() && NATIVE.buildNumber ? +NATIVE.buildNumber() : 0; } catch { return 0; } }
+const updateAvailable = () => !!(UPD.latest && UPD.latest.build > appBuild());
+async function checkForUpdate(manual) {
+  if (!canSelfUpdate()) return;
+  UPD.checking = true; refreshUpdateUI();
+  try {
+    const r = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, { headers: { Accept: "application/vnd.github+json" } });
+    if (!r.ok) throw new Error(String(r.status));
+    const j = await r.json();
+    const build = parseInt(String(j.tag_name || "").replace(/\D+/g, ""), 10) || 0;
+    const asset = (j.assets || []).find(a => /\.apk$/i.test(a.name));
+    UPD.latest = asset ? { build, url: asset.browser_download_url, size: asset.size } : null;
+    if (manual) toast(updateAvailable() ? `Build ${build} is available` : "You're on the latest version");
+  } catch {
+    if (manual) toast("Couldn't check for updates. Check your internet connection.", 5000);
+  }
+  UPD.checking = false; refreshUpdateUI();
+}
+function startUpdate() {
+  if (!updateAvailable() || UPD.status) return;
+  let r = "";
+  try { r = String(NATIVE.installUpdate(UPD.latest.url)); } catch { r = "error"; }
+  if (r === "permission") toast("Allow Spotiops II to install apps, then come back and tap Update again.", 8000);
+  else if (r === "ok") { UPD.status = "downloading"; UPD.detail = "0"; refreshUpdateUI(); }
+  else if (r !== "busy") toast("The update couldn't start. Try again.", 5000);
+}
+window.__updateStatus = (state, detail) => {
+  UPD.status = state === "downloading" || state === "installing" ? state : "";
+  UPD.detail = detail || "";
+  if (state === "conflict") toast("This copy can't update itself. Uninstall Spotiops II once, then install the latest APK from GitHub.", 10000);
+  else if (state === "error") toast(`Update failed${detail ? `: ${detail}` : ""}`, 7000);
+  else if (state === "cancelled") toast("Update cancelled");
+  else if (state === "installing") toast("Confirm the install to finish updating", 5000);
+  refreshUpdateUI();
+};
+function updText() {
+  const b = appBuild();
+  if (UPD.status === "downloading") return `Downloading build ${UPD.latest ? UPD.latest.build : ""}: ${UPD.detail || 0}%`;
+  if (UPD.status === "installing") return "Confirm the install on screen to finish.";
+  if (UPD.checking) return `Build ${b} · checking for updates…`;
+  if (updateAvailable()) return `Build ${b} · build ${UPD.latest.build} is available${UPD.latest.size ? ` (${fmtBytes(UPD.latest.size)})` : ""}`;
+  if (UPD.latest) return `Build ${b} · up to date`;
+  return `Build ${b}`;
+}
+function updButton() {
+  const busy = !!UPD.status;
+  if (updateAvailable() || busy) return `<button class="btn" id="upd-btn" data-act="doupdate" style="padding:8px 16px;font-size:12px"${busy ? " disabled" : ""}>${busy ? "Updating" : "Update"}</button>`;
+  return `<button class="btn ghost" id="upd-btn" data-act="checkupdate" style="padding:8px 14px;font-size:12px"${UPD.checking ? " disabled" : ""}>Check for updates</button>`;
+}
+function updateHTML() {
+  if (!canSelfUpdate()) {
+    return `<div class="field"><label>Updates</label><div class="upd-row"><span>Get the newest version from GitHub.</span><a class="btn ghost" href="https://github.com/${REPO}/releases/latest" target="_blank" rel="noopener" style="padding:8px 14px;font-size:12px">Open GitHub</a></div></div>`;
+  }
+  return `<div class="field"><label>App updates</label><div class="upd-row"><span id="upd-text">${esc(updText())}</span>${updButton()}</div></div>`;
+}
+function refreshUpdateUI() {
+  const t = $("#upd-text"); if (t) t.textContent = updText();
+  const b = $("#upd-btn"); if (b) b.outerHTML = updButton();
+  const a = $("#avatar"); if (a) a.classList.toggle("has-update", updateAvailable());
+}
+
 /* ============ Android app bridge ============ */
 let lastNative = "";
 function nativeNowPlaying() {
@@ -2080,6 +2149,7 @@ function settingsModal() {
     <div class="field"><label for="set-private">Privacy</label>
       <label class="switch-row" for="set-private"><span><span class="sw-title">Hide album and artist details</span><span class="sw-note">Album names and covers, artist names and photos, and descriptions</span></span><input type="checkbox" id="set-private" role="switch"${HIDE ? " checked" : ""}><span class="switch" aria-hidden="true"></span></label></div>
     <div class="field"><label>Downloads</label><div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap"><span>${plural(DL.size, "song")} · ${fmtBytes(dlBytes())} on this device</span>${DL.size ? `<button class="btn ghost" data-act="askremoveall" style="padding:8px 14px;font-size:12px">Remove all</button>` : ""}</div></div>
+    ${updateHTML()}
     <div class="muted" style="font-size:12px">Space plays or pauses. Shift + → and Shift + ← skip songs. / jumps to search.</div>
     <div class="modal-actions"><button class="btn ghost" data-act="signout">${icon("logout", 18)}Sign out</button><button class="btn" data-act="closemodal">Done</button></div>`);
   $("#set-q").addEventListener("change", e => { store.set("quality", +e.target.value); toast("Quality applies from the next song"); });
@@ -2152,7 +2222,9 @@ document.addEventListener("click", async e => {
     case "renamepl": closeMenu(); renameModal(id); break;
     case "newpl": closeMenu(); newPlaylistModal(a.dataset.add ? a.dataset.add.split(",") : null); break;
     case "libsort": LIB.sort = LIB.sort === "alpha" ? "recent" : "alpha"; store.set("libSort", LIB.sort); renderLib(); if (route.v === "library") render(); break;
-    case "settings": settingsModal(); break;
+    case "settings": settingsModal(); if (canSelfUpdate() && !UPD.latest && !UPD.checking) checkForUpdate(false); break;
+    case "checkupdate": checkForUpdate(true); break;
+    case "doupdate": startUpdate(); break;
     case "closemodal": closeModal(); break;
     case "signout": closeModal(); signOut(); break;
   }
@@ -2248,6 +2320,10 @@ function startApp() {
   ONLINE = true;
   offlineReady = loadOffline();
   renderLib(); render(); loadLibrary();
+  if (canSelfUpdate()) setTimeout(async () => {
+    await checkForUpdate(false);
+    if (updateAvailable()) toast(`Update available: build ${UPD.latest.build}. Tap your profile button to install it.`, 7000);
+  }, 3000);
 }
 window.addEventListener("online", () => { if (S && !ONLINE) { loadLibrary(); render(); } });
 bindSeek($("#seek"));

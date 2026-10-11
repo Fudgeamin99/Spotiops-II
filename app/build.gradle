@@ -2,6 +2,8 @@ plugins {
     id 'com.android.application'
 }
 
+def buildNumber = (project.findProperty('buildNumber') ?: '1') as Integer
+
 android {
     namespace 'com.spotiops.two'
     compileSdk 34
@@ -10,15 +12,28 @@ android {
         applicationId 'com.spotiops.two'
         minSdk 24
         targetSdk 34
-        versionCode 1
-        versionName '2.0.0'
+        // GitHub passes its run number, so every build counts up and can update the last one.
+        versionCode buildNumber
+        versionName "2.0.${buildNumber}"
+    }
+
+    signingConfigs {
+        // One fixed key for every build. Android only installs an update signed with the same key.
+        spotiops {
+            storeFile rootProject.file('signing/spotiops-ii.keystore')
+            storePassword 'spotiops-ii'
+            keyAlias 'spotiops'
+            keyPassword 'spotiops-ii'
+        }
     }
 
     buildTypes {
         release {
             minifyEnabled false
-            // Signed with the debug key so the release build installs without extra setup.
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.spotiops
+        }
+        debug {
+            signingConfig signingConfigs.spotiops
         }
     }
 

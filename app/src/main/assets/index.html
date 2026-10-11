@@ -104,6 +104,7 @@ img { max-width: 100%; display: block; }
 .brand { display: flex; align-items: center; gap: 10px; font: 400 20px/1 var(--font-stencil); letter-spacing: .06em; text-transform: uppercase; }
 .brand b { font-weight: 400; color: var(--accent); }
 .brand .mark { width: 30px; height: 30px; flex: none; }
+.top-brand { display: none; color: var(--fg); white-space: nowrap; }
 
 /* ---------- App shell ---------- */
 #app {
@@ -522,6 +523,9 @@ input[type=range]:hover::-webkit-slider-thumb { background: var(--accent-hi); }
   .topbar { padding: calc(env(safe-area-inset-top, 0px) + 10px) 16px 10px; }
   .topbar .circle { display: none; }
   .topbar.has-back .circle.back { display: grid; }
+  .topbar .top-brand { display: flex; font-size: 18px; gap: 9px; min-width: 0; }
+  .topbar .top-brand .mark { width: 28px; height: 28px; }
+  .topbar .searchbox { display: none; }
   #view { padding: 0 16px 24px; }
   .ent { padding-top: 8px; }
   .ent .cover { margin: 0 auto; width: min(240px, 70vw); }
@@ -624,6 +628,7 @@ input[type=range]:hover::-webkit-slider-thumb { background: var(--accent-hi); }
     <div class="topbar" id="topbar">
       <button class="circle back" data-act="back" aria-label="Go back" id="nav-back"></button>
       <button class="circle" data-act="fwd" aria-label="Go forward" id="nav-fwd"></button>
+      <button class="brand top-brand" data-go="home" aria-label="Spotiops II home"><svg class="mark" aria-hidden="true"><use href="#mark"/></svg><span>Spotiops<b> II</b></span></button>
       <label class="searchbox" id="searchbox" hidden>
         <span id="sb-ic"></span>
         <input id="q" placeholder="What do you want to listen to?" autocomplete="off" aria-label="Search">

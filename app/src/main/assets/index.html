@@ -329,7 +329,8 @@ main > .topbar, #view > * { position: relative; }
   background: repeating-linear-gradient(-45deg, var(--panel-3) 0 6px, var(--panel-2) 6px 12px);
   border: 1px solid var(--line); text-shadow: none;
 }
-.switch-row + .switch-row { border-top: 1px solid var(--line); }
+.sw-title { display: block; }
+.sw-note { display: block; margin-top: 4px; font: 13px/1.35 var(--font-body); letter-spacing: 0; text-transform: none; color: var(--muted); }
 .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; cursor: pointer; padding: 6px 0; }
 .switch-row input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .switch { position: relative; flex: none; width: 46px; height: 24px; background: var(--panel-3); border: 1px solid var(--line); transition: background .15s, border-color .15s; }
@@ -747,9 +748,9 @@ let ONLINE = true;
 let deviceId = store.get("device", null);
 if (!deviceId) { deviceId = uid(); store.set("device", deviceId); }
 const CLIENT = "Spotiops II", VERSION = "2.0.0";
-let HIDE = !!store.get("hideAlbums", false);       // album names and covers
-let HIDE_ART = !!store.get("hideArtists", false);  // artist names and photos
-let HIDE_DESC = !!store.get("hideDescriptions", false);
+// One privacy switch hides album names and covers, artist names and photos, and descriptions.
+const PRIVATE = !!store.get("privacyMode", !!(store.get("hideAlbums", false) || store.get("hideArtists", false) || store.get("hideDescriptions", false)));
+let HIDE = PRIVATE, HIDE_ART = PRIVATE, HIDE_DESC = PRIVATE;
 const REDACT = `<span class="redact" title="Hidden">Redacted</span>`;
 const isAlbumItem = it => !!it && it.Type === "MusicAlbum";
 const isArtistItem = it => !!it && it.Type === "MusicArtist";
@@ -2056,34 +2057,28 @@ function renameModal(id) {
     p.Name = name; closeModal(); toast("Playlist renamed"); renderLib(); render();
   });
 }
-function setPrivacy(what, on) {
+function setPrivacyMode(on) {
   on = !!on;
-  if (what === "albums") { HIDE = on; store.set("hideAlbums", on); }
-  else if (what === "artists") { HIDE_ART = on; store.set("hideArtists", on); }
-  else { HIDE_DESC = on; store.set("hideDescriptions", on); }
+  HIDE = HIDE_ART = HIDE_DESC = on;
+  store.set("privacyMode", on);
+  ["hideAlbums", "hideArtists", "hideDescriptions"].forEach(k => store.del(k));
   lastNative = "";
   renderLib(); updateNowUI(); render();
-  const label = { albums: "Album names and covers", artists: "Artist names and photos", descriptions: "Descriptions" }[what];
-  toast(`${label} ${on ? "hidden" : "shown"}`);
+  toast(on ? "Album and artist details hidden" : "Album and artist details shown");
 }
-const setHideAlbums = on => setPrivacy("albums", on);
 function settingsModal() {
   const q = store.get("quality", ORIGINAL);
   modal(`<h3>${esc(S.userName)}</h3><div class="muted" style="margin-top:-10px">${esc(S.serverName || "")} · ${esc(S.server)}</div>
     <div class="field"><label for="set-q">Streaming quality</label><select id="set-q">
       ${[[140000000, "Original (lossless when possible)"], [320000, "Very high · 320 kbps"], [192000, "High · 192 kbps"], [128000, "Normal · 128 kbps"], [64000, "Data saver · 64 kbps"]].map(([v, l]) => `<option value="${v}"${+q === v ? " selected" : ""}>${l}</option>`).join("")}
     </select></div>
-    <div class="field"><label for="set-hide">Privacy</label>
-      <label class="switch-row" for="set-hide"><span>Hide album names and covers</span><input type="checkbox" id="set-hide" role="switch"${HIDE ? " checked" : ""}><span class="switch" aria-hidden="true"></span></label>
-      <label class="switch-row" for="set-hide-art"><span>Hide artist names and photos</span><input type="checkbox" id="set-hide-art" role="switch"${HIDE_ART ? " checked" : ""}><span class="switch" aria-hidden="true"></span></label>
-      <label class="switch-row" for="set-hide-desc"><span>Hide descriptions</span><input type="checkbox" id="set-hide-desc" role="switch"${HIDE_DESC ? " checked" : ""}><span class="switch" aria-hidden="true"></span></label></div>
+    <div class="field"><label for="set-private">Privacy</label>
+      <label class="switch-row" for="set-private"><span><span class="sw-title">Hide album and artist details</span><span class="sw-note">Album names and covers, artist names and photos, and descriptions</span></span><input type="checkbox" id="set-private" role="switch"${HIDE ? " checked" : ""}><span class="switch" aria-hidden="true"></span></label></div>
     <div class="field"><label>Downloads</label><div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap"><span>${plural(DL.size, "song")} · ${fmtBytes(dlBytes())} on this device</span>${DL.size ? `<button class="btn ghost" data-act="askremoveall" style="padding:8px 14px;font-size:12px">Remove all</button>` : ""}</div></div>
     <div class="muted" style="font-size:12px">Space plays or pauses. Shift + → and Shift + ← skip songs. / jumps to search.</div>
     <div class="modal-actions"><button class="btn ghost" data-act="signout">${icon("logout", 18)}Sign out</button><button class="btn" data-act="closemodal">Done</button></div>`);
   $("#set-q").addEventListener("change", e => { store.set("quality", +e.target.value); toast("Quality applies from the next song"); });
-  $("#set-hide").addEventListener("change", e => setPrivacy("albums", e.target.checked));
-  $("#set-hide-art").addEventListener("change", e => setPrivacy("artists", e.target.checked));
-  $("#set-hide-desc").addEventListener("change", e => setPrivacy("descriptions", e.target.checked));
+  $("#set-private").addEventListener("change", e => setPrivacyMode(e.target.checked));
 }
 
 /* ============ events ============ */

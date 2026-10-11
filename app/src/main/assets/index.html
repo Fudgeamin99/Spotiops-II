@@ -329,6 +329,7 @@ main > .topbar, #view > * { position: relative; }
   background: repeating-linear-gradient(-45deg, var(--panel-3) 0 6px, var(--panel-2) 6px 12px);
   border: 1px solid var(--line); text-shadow: none;
 }
+.switch-row + .switch-row { border-top: 1px solid var(--line); }
 .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; cursor: pointer; padding: 6px 0; }
 .switch-row input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .switch { position: relative; flex: none; width: 46px; height: 24px; background: var(--panel-3); border: 1px solid var(--line); transition: background .15s, border-color .15s; }
@@ -746,14 +747,20 @@ let ONLINE = true;
 let deviceId = store.get("device", null);
 if (!deviceId) { deviceId = uid(); store.set("device", deviceId); }
 const CLIENT = "Spotiops II", VERSION = "2.0.0";
-let HIDE = !!store.get("hideAlbums", false);
-const REDACT = `<span class="redact" title="Album name hidden">Redacted</span>`;
+let HIDE = !!store.get("hideAlbums", false);       // album names and covers
+let HIDE_ART = !!store.get("hideArtists", false);  // artist names and photos
+let HIDE_DESC = !!store.get("hideDescriptions", false);
+const REDACT = `<span class="redact" title="Hidden">Redacted</span>`;
 const isAlbumItem = it => !!it && it.Type === "MusicAlbum";
-const nameHTML = it => HIDE && isAlbumItem(it) ? REDACT : esc(it.Name);
-const nameText = it => HIDE && isAlbumItem(it) ? "album" : it.Name;
+const isArtistItem = it => !!it && it.Type === "MusicArtist";
+const hiddenItem = it => (HIDE && isAlbumItem(it)) || (HIDE_ART && isArtistItem(it));
+const nameHTML = it => hiddenItem(it) ? REDACT : esc(it.Name);
+const nameText = it => hiddenItem(it) ? (isAlbumItem(it) ? "album" : "artist") : it.Name;
 const albumHTML = name => HIDE ? REDACT : esc(name);
-const ctxHTML = fallback => P.ctxName ? (HIDE && P.ctxAlbum ? REDACT : esc(P.ctxName)) : esc(fallback);
-const ctxText = fallback => P.ctxName ? (HIDE && P.ctxAlbum ? "Album" : P.ctxName) : fallback;
+const artistHTML = name => HIDE_ART ? REDACT : esc(name);
+const ctxHidden = () => (HIDE && P.ctxAlbum) || (HIDE_ART && P.ctxArtist);
+const ctxHTML = fallback => P.ctxName ? (ctxHidden() ? REDACT : esc(P.ctxName)) : esc(fallback);
+const ctxText = fallback => P.ctxName ? (ctxHidden() ? (P.ctxAlbum ? "Album" : "Artist") : P.ctxName) : fallback;
 const FIELDS = "PrimaryImageAspectRatio,ChildCount,Genres,DateCreated,ProductionYear,Overview,ParentId";
 
 function authHeader() {
@@ -806,6 +813,7 @@ const serverImg = (id, tag, size) => `${S.server}/Items/${id}/Images/Primary?fil
 function imgUrl(it, size = 300) {
   if (!it || it.__liked || it.__dl) return null;
   if (HIDE && it.Type !== "MusicArtist") return null;
+  if (HIDE_ART && it.Type === "MusicArtist") return null;
   const p = imgParts(it);
   if (p && OFFART.has(p[0])) return OFFART.get(p[0]);
   if (!p) return OFFART.get(it.Id) || null;
@@ -928,7 +936,7 @@ function libEntries() {
 }
 function libRow(e) {
   const it = e.it, round = it.Type === "MusicArtist";
-  const sub = e.kind === "Artist" ? "Artist" : e.kind === "Album" ? `Album · ${esc(it.AlbumArtist || "")}` : `Playlist · ${plural(it.ChildCount || 0, "song")}`;
+  const sub = e.kind === "Artist" ? "Artist" : e.kind === "Album" ? `Album · ${artistHTML(it.AlbumArtist || "")}` : `Playlist · ${plural(it.ChildCount || 0, "song")}`;
   const r = it.Type === "MusicAlbum" ? "album" : it.Type === "Playlist" ? "playlist" : "artist";
   const on = (route.v === r && route.id === it.Id) ? " on" : "";
   const playing = P.ctxId === it.Id ? " playing" : "";
@@ -976,7 +984,9 @@ function playList(tracks, start = 0, ctx = {}) {
   reportStop();
   P.base = tracks.slice(); P.added = 0;
   P.ctxId = ctx.id || null; P.ctxName = ctx.name || ""; P.ctxRoute = ctx.route || null;
-  P.ctxAlbum = isAlbumItem(cache.get(P.ctxId)) || !!(COL.get(P.ctxId) && COL.get(P.ctxId).type === "album");
+  const baseId = P.ctxId && P.ctxId.startsWith("mix:") ? P.ctxId.slice(4) : P.ctxId;
+  P.ctxAlbum = isAlbumItem(cache.get(baseId)) || !!(COL.get(baseId) && COL.get(baseId).type === "album");
+  P.ctxArtist = isArtistItem(cache.get(baseId));
   if (P.shuffle) {
     const first = start != null && start >= 0 ? tracks[start] : tracks[Math.floor(Math.random() * tracks.length)];
     P.queue = [first, ...shuffled(tracks.filter((t, i) => t !== first))];
@@ -1107,6 +1117,7 @@ function bindSeek(el) {
 
 function trackArtists(t, links = true) {
   const arr = (t.ArtistItems && t.ArtistItems.length ? t.ArtistItems : (t.AlbumArtists || [])).slice(0, 4);
+  if (HIDE_ART) return REDACT;
   if (!arr.length) return esc(t.AlbumArtist || (t.Artists || []).join(", ") || "Unknown artist");
   return arr.map(a => links ? `<span class="link" data-go="artist:${esc(a.Id)}">${esc(a.Name)}</span>` : esc(a.Name)).join(", ");
 }
@@ -1120,7 +1131,7 @@ function updateNowUI() {
   const f = $("#p-fav"); f.hidden = false; f.dataset.fav = t.Id; const on = isFav(t);
   f.classList.toggle("on", on); f.innerHTML = icon("heart", 18, on ? "" : "outline");
   $("#t-dur").textContent = fmt(secs(t));
-  document.title = `${t.Name} · ${(t.Artists || [])[0] || ""} — Spotiops II`;
+  document.title = HIDE_ART ? `${t.Name} — Spotiops II` : `${t.Name} · ${(t.Artists || [])[0] || ""} — Spotiops II`;
   $$(".row.playing").forEach(r => r.classList.remove("playing", "live"));
   $$(`.row[data-tid="${CSS.escape(t.Id)}"]`).forEach(r => r.classList.add("playing"));
   updatePlayState();
@@ -1130,7 +1141,7 @@ function updateNowUI() {
   if ("mediaSession" in navigator) {
     try {
       const u = imgUrl(t, 512);
-      navigator.mediaSession.metadata = new MediaMetadata({ title: t.Name, artist: (t.Artists || []).join(", "), album: HIDE ? "" : t.Album || "", artwork: u ? [{ src: u, sizes: "512x512" }] : [] });
+      navigator.mediaSession.metadata = new MediaMetadata({ title: t.Name, artist: HIDE_ART ? "" : (t.Artists || []).join(", "), album: HIDE ? "" : t.Album || "", artwork: u ? [{ src: u, sizes: "512x512" }] : [] });
     } catch {}
   }
 }
@@ -1222,7 +1233,7 @@ function npHTML() {
   if (!t) return `<div class="empty"><h3>Nothing playing</h3><div>Choose a song, album or playlist to start listening.</div></div>`;
   return `<div class="np-art">${art(t, 640)}</div>
     <div class="np-row"><div class="ell"><h2 class="np-title"><span class="link" data-go="album:${esc(t.AlbumId || "")}">${esc(t.Name)}</span></h2><div class="np-sub ell">${trackArtists(t)}</div></div>${favBtn(t, 20)}</div>
-    <div class="np-card"><h4>From the album</h4><div class="li" data-go="album:${esc(t.AlbumId || "")}" style="margin:0 -8px"><div class="thumb">${art(t, 96)}</div><div class="ell"><div class="t ell">${albumHTML(t.Album || "Unknown album")}</div><div class="s ell">${esc(t.AlbumArtist || "")}${t.ProductionYear ? " · " + t.ProductionYear : ""}</div></div></div></div>
+    <div class="np-card"><h4>From the album</h4><div class="li" data-go="album:${esc(t.AlbumId || "")}" style="margin:0 -8px"><div class="thumb">${art(t, 96)}</div><div class="ell"><div class="t ell">${albumHTML(t.Album || "Unknown album")}</div><div class="s ell">${artistHTML(t.AlbumArtist || "")}${t.ProductionYear ? " · " + t.ProductionYear : ""}</div></div></div></div>
     <div class="np-card"><div class="np-row"><h4>Next in queue</h4><button class="link muted" data-act="panel" data-panel="queue" style="font-size:13px;font-weight:600">Open queue</button></div>${P.queue[P.idx + 1] ? `<div class="qi" data-qi="${P.idx + 1}" style="margin:0 -8px"><div class="thumb">${art(P.queue[P.idx + 1], 80)}</div><div class="ell"><div class="t ell">${esc(P.queue[P.idx + 1].Name)}</div><div class="s ell">${trackArtists(P.queue[P.idx + 1], false)}</div></div></div>` : `<div class="muted">Nothing else queued.</div>`}</div>`;
 }
 async function loadLyrics() {
@@ -1623,7 +1634,7 @@ function collectionHTML(c) {
   const total = tracks.reduce((s, t) => s + secs(t), 0);
   tintFrom(imgUrl(c.item, 64), "main");
   return entHeader({ item: c.item, eyebrow: isAlbum ? "Album" : "Playlist", title: c.item.Name, hideTitle: HIDE && isAlbum, cover: art(c.item, 480),
-      by: `${isAlbum && c.item.AlbumArtist ? `<b>${esc(c.item.AlbumArtist)}</b><span>•</span>` : ""}<span>${plural(tracks.length, "song")} downloaded, ${fmtLong(total)}</span>` })
+      by: `${isAlbum && c.item.AlbumArtist ? `<b>${artistHTML(c.item.AlbumArtist)}</b><span>•</span>` : ""}<span>${plural(tracks.length, "song")} downloaded, ${fmtLong(total)}</span>` })
     + actionsRow(c.id, dlButton(c.id))
     + trackRows(tracks, { ctxId: c.id, ctxName: c.item.Name, album: !isAlbum, art: !isAlbum, useIndex: isAlbum, discs: isAlbum });
 }
@@ -1658,7 +1669,7 @@ function nativeNowPlaying() {
   lastNative = key;
   try {
     if (!t) NATIVE.stopped();
-    else NATIVE.nowPlaying(t.Name || "", (t.Artists || []).join(", "), HIDE ? "" : t.Album || "", (!HIDE && imgParts(t) ? serverImg(imgParts(t)[0], imgParts(t)[1], 512) : ""), playing);
+    else NATIVE.nowPlaying(t.Name || "", HIDE_ART ? "" : (t.Artists || []).join(", "), HIDE ? "" : t.Album || "", (!HIDE && imgParts(t) ? serverImg(imgParts(t)[0], imgParts(t)[1], 512) : ""), playing);
   } catch {}
 }
 window.__spotiopsCmd = c => {
@@ -1741,7 +1752,7 @@ function skeleton(v) {
 /* ============ view building blocks ============ */
 function cardSub(it) {
   if (it.__liked) return "Playlist";
-  if (it.Type === "MusicAlbum") return `${it.ProductionYear ? it.ProductionYear + " · " : ""}${esc(it.AlbumArtist || "")}`;
+  if (it.Type === "MusicAlbum") return `${it.ProductionYear ? it.ProductionYear + " · " : ""}${artistHTML(it.AlbumArtist || "")}`;
   if (it.Type === "MusicArtist") return "Artist";
   if (it.Type === "Playlist") return `Playlist · ${plural(it.ChildCount || 0, "song")}`;
   if (it.Type === "Audio") return trackArtists(it, false);
@@ -1781,7 +1792,7 @@ function trackRows(tracks, opts = {}) {
 }
 function entHeader({ item, eyebrow, title, by, cover, round, overview, hideTitle }) {
   const long = (title || "").length > 28;
-  return `<div class="ent"><div class="cover${round ? " round" : ""}">${cover}</div><div class="meta"><div class="eyebrow">${eyebrow}</div><h1 class="${long && !hideTitle ? "long" : ""}">${hideTitle ? REDACT : esc(title)}</h1>${overview ? `<div class="overview">${esc(overview)}</div>` : ""}<div class="by">${by}</div></div></div>`;
+  return `<div class="ent"><div class="cover${round ? " round" : ""}">${cover}</div><div class="meta"><div class="eyebrow">${eyebrow}</div><h1 class="${long && !hideTitle ? "long" : ""}">${hideTitle ? REDACT : esc(title)}</h1>${overview && !HIDE_DESC ? `<div class="overview">${esc(overview)}</div>` : ""}<div class="by">${by}</div></div></div>`;
 }
 function actionsRow(id, extra = "") {
   return `<div class="actions"><button class="playfab big" data-playctx="${esc(id)}" aria-label="Play">${icon("play", 24)}</button><button class="icon-btn${P.shuffle ? " on" : ""}" data-act="shuffleplay" data-id="${esc(id)}" aria-label="Shuffle play">${icon("shuffle", 26)}</button>${extra}</div>`;
@@ -1820,7 +1831,7 @@ const VIEWS = {
       <div class="quick">${quick}</div>
       ${shelf("Jump back in", playedAlbums.slice(0, 16))}
       ${shelf("Recently added", recent.Items, "allalbums")}
-      ${mostCards.length ? `<section class="shelf"><div class="shelf-head"><h2>On repeat</h2></div><div class="row-scroll">${mostCards.map(t => { keep(t); return `<div class="card" data-play-track="${esc(t.Id)}" data-from="most"><div class="art">${art(t, 360)}<button class="playfab" data-play-track="${esc(t.Id)}" aria-label="Play ${esc(t.Name)}">${icon("play", 20)}</button></div><div class="t ell">${esc(t.Name)}</div><div class="s">${esc((t.Artists || []).join(", "))}${t.UserData && t.UserData.PlayCount ? ` · ${plural(t.UserData.PlayCount, "play")}` : ""}</div></div>`; }).join("")}</div></section>` : ""}
+      ${mostCards.length ? `<section class="shelf"><div class="shelf-head"><h2>On repeat</h2></div><div class="row-scroll">${mostCards.map(t => { keep(t); return `<div class="card" data-play-track="${esc(t.Id)}" data-from="most"><div class="art">${art(t, 360)}<button class="playfab" data-play-track="${esc(t.Id)}" aria-label="Play ${esc(t.Name)}">${icon("play", 20)}</button></div><div class="t ell">${esc(t.Name)}</div><div class="s">${trackArtists(t, false)}${t.UserData && t.UserData.PlayCount ? ` · ${plural(t.UserData.PlayCount, "play")}` : ""}</div></div>`; }).join("")}</div></section>` : ""}
       ${shelf("Your playlists", LIB.playlists.slice(0, 16), "library")}
       ${shelf("Artists in your library", keepAll(artists.Items))}
       ${shelf("Rediscover", random.Items)}`;
@@ -1838,11 +1849,11 @@ const VIEWS = {
     tintFrom(imgUrl(al, 64), "main");
     const total = tracks.reduce((s, t) => s + secs(t), 0);
     const artist = (al.AlbumArtists || [])[0];
-    const artistLink = artist ? `<b class="link" data-go="artist:${esc(artist.Id)}">${esc(artist.Name)}</b>` : `<b>${esc(al.AlbumArtist || "Various artists")}</b>`;
+    const artistLink = artist ? `<b class="link" data-go="artist:${esc(artist.Id)}">${artistHTML(artist.Name)}</b>` : `<b>${artistHTML(al.AlbumArtist || "Various artists")}</b>`;
     let more = "";
     if (artist) {
       const m = await items({ AlbumArtistIds: artist.Id, IncludeItemTypes: "MusicAlbum", SortBy: "ProductionYear,SortName", SortOrder: "Descending", Limit: 12 }).catch(() => ({ Items: [] }));
-      more = shelf(`More by ${artist.Name}`, m.Items.filter(x => x.Id !== id), `artist:${artist.Id}`);
+      more = shelf(HIDE_ART ? "More by this artist" : `More by ${artist.Name}`, m.Items.filter(x => x.Id !== id), `artist:${artist.Id}`);
     }
     const label = tracks.length === 1 ? "Single" : tracks.length <= 6 && total < 1800 ? "EP" : "Album";
     return entHeader({ item: al, eyebrow: label, title: al.Name, hideTitle: HIDE, cover: art(al, 480), by: `${artistLink}<span>•</span><span>${al.ProductionYear || ""}</span><span>•</span><span>${plural(tracks.length, "song")}, ${fmtLong(total)}</span>` })
@@ -1859,14 +1870,14 @@ const VIEWS = {
       api(`/Items/${id}/Similar`, { params: { userId: S.userId, Limit: 12, Fields: FIELDS } }).catch(() => ({ Items: [] }))
     ]);
     keep(ar);
-    const bd = ar.BackdropImageTags && ar.BackdropImageTags.length ? `${S.server}/Items/${id}/Images/Backdrop/0?maxWidth=1600&quality=85&tag=${ar.BackdropImageTags[0]}` : null;
+    const bd = !HIDE_ART && ar.BackdropImageTags && ar.BackdropImageTags.length ? `${S.server}/Items/${id}/Images/Backdrop/0?maxWidth=1600&quality=85&tag=${ar.BackdropImageTags[0]}` : null;
     tintFrom(imgUrl(ar, 64), "main");
     const alb = albums.Items.filter(a => (a.ChildCount || 0) > 3 || !a.ChildCount);
     const singles = albums.Items.filter(a => a.ChildCount && a.ChildCount <= 3);
-    const header = entHeader({ item: ar, eyebrow: "Artist", title: ar.Name, round: !bd, cover: art(ar, 480), by: `<span>${plural(albums.Items.length, "release")} in your library</span>`, overview: ar.Overview });
+    const header = entHeader({ item: ar, eyebrow: "Artist", title: ar.Name, hideTitle: HIDE_ART, round: !bd, cover: art(ar, 480), by: `<span>${plural(albums.Items.length, "release")} in your library</span>`, overview: ar.Overview });
     const hero = bd ? `<div class="artist-hero" style="background-image:url('${esc(bd)}')">${header.replace('<div class="cover round">', '<div class="cover round" hidden>').replace('<div class="cover">', '<div class="cover" hidden>')}</div>` : header;
     return hero
-      + actionsRow(id, favBtn(ar, 28) + `<button class="icon-btn" data-act="mix" data-id="${esc(id)}" aria-label="Start ${esc(ar.Name)} mix" title="Start a mix">${icon("radio", 24)}</button>`)
+      + actionsRow(id, favBtn(ar, 28) + `<button class="icon-btn" data-act="mix" data-id="${esc(id)}" aria-label="Start ${esc(nameText(ar))} mix" title="Start a mix">${icon("radio", 24)}</button>`)
       + (top.Items.length ? `<section class="shelf"><div class="shelf-head"><h2>Popular</h2></div>${trackRows(top.Items, { ctxId: id, ctxName: ar.Name, album: false, head: false })}</section>` : "")
       + shelf("Albums", alb) + shelf("Singles and EPs", singles) + shelf("Similar artists", keepAll(similar.Items).filter(x => x.Type === "MusicArtist"));
   },
@@ -1913,7 +1924,7 @@ const VIEWS = {
     if (!A.length && !B.length && !C.length && !D.length) return `${mobileBox}<div class="empty"><h3>No results found for “${esc(q)}”</h3><div>Check the spelling, or try fewer or different words.</div></div>`;
     const ql = q.toLowerCase();
     const top = A.find(a => a.Name.toLowerCase() === ql) || B.find(a => a.Name.toLowerCase() === ql) || A[0] || B[0] || C[0];
-    const topKind = top.Type === "MusicArtist" ? "Artist" : top.Type === "MusicAlbum" ? `Album · ${esc(top.AlbumArtist || "")}` : `Song · ${trackArtists(top, false)}`;
+    const topKind = top.Type === "MusicArtist" ? "Artist" : top.Type === "MusicAlbum" ? `Album · ${artistHTML(top.AlbumArtist || "")}` : `Song · ${trackArtists(top, false)}`;
     const topCard = `<div><div class="shelf-head"><h2>Top result</h2></div><div class="top-card" data-go="${esc(routeOf(top))}"><div class="thumb${top.Type === "MusicArtist" ? " round" : ""}">${art(top, 200)}</div><h3>${nameHTML(top)}</h3><div class="muted">${topKind.includes("·") ? topKind : `<span class="pill">${topKind}</span>`}</div><button class="playfab" data-playctx="${esc(top.Id)}" aria-label="Play ${esc(top.Name)}">${icon("play", 20)}</button></div></div>`;
     const songsBlock = C.length ? `<div style="min-width:0"><div class="shelf-head"><h2>Songs</h2></div>${trackRows(C.slice(0, 4), { ctxName: `Search: ${q}`, album: false, head: false })}</div>` : "";
     return mobileBox + `<div class="two-col">${topCard}${songsBlock}</div>`
@@ -1997,7 +2008,7 @@ function trackMenu(btn) {
     <div class="msep"></div>
     <button class="mi" data-act="mix" data-id="${esc(t.Id)}">${icon("radio", 18)}Start a mix from this song</button>
     ${t.AlbumId ? `<button class="mi" data-go="album:${esc(t.AlbumId)}">${icon("album", 18)}Go to album</button>` : ""}
-    ${arts.map(a => `<button class="mi" data-go="artist:${esc(a.Id)}">${icon("person", 18)}<span class="ell">Go to ${esc(a.Name)}</span></button>`).join("")}`);
+    ${arts.map(a => `<button class="mi" data-go="artist:${esc(a.Id)}">${icon("person", 18)}<span class="ell">${HIDE_ART ? "Go to artist" : `Go to ${esc(a.Name)}`}</span></button>`).join("")}`);
 }
 function entityMenu(btn, kind) {
   const id = btn.dataset.id, it = cache.get(id);
@@ -2045,12 +2056,17 @@ function renameModal(id) {
     p.Name = name; closeModal(); toast("Playlist renamed"); renderLib(); render();
   });
 }
-function setHideAlbums(on) {
-  HIDE = !!on; store.set("hideAlbums", HIDE);
+function setPrivacy(what, on) {
+  on = !!on;
+  if (what === "albums") { HIDE = on; store.set("hideAlbums", on); }
+  else if (what === "artists") { HIDE_ART = on; store.set("hideArtists", on); }
+  else { HIDE_DESC = on; store.set("hideDescriptions", on); }
   lastNative = "";
   renderLib(); updateNowUI(); render();
-  toast(HIDE ? "Album names and covers hidden" : "Album names and covers shown");
+  const label = { albums: "Album names and covers", artists: "Artist names and photos", descriptions: "Descriptions" }[what];
+  toast(`${label} ${on ? "hidden" : "shown"}`);
 }
+const setHideAlbums = on => setPrivacy("albums", on);
 function settingsModal() {
   const q = store.get("quality", ORIGINAL);
   modal(`<h3>${esc(S.userName)}</h3><div class="muted" style="margin-top:-10px">${esc(S.serverName || "")} · ${esc(S.server)}</div>
@@ -2058,12 +2074,16 @@ function settingsModal() {
       ${[[140000000, "Original (lossless when possible)"], [320000, "Very high · 320 kbps"], [192000, "High · 192 kbps"], [128000, "Normal · 128 kbps"], [64000, "Data saver · 64 kbps"]].map(([v, l]) => `<option value="${v}"${+q === v ? " selected" : ""}>${l}</option>`).join("")}
     </select></div>
     <div class="field"><label for="set-hide">Privacy</label>
-      <label class="switch-row" for="set-hide"><span>Hide album names and covers</span><input type="checkbox" id="set-hide" role="switch"${HIDE ? " checked" : ""}><span class="switch" aria-hidden="true"></span></label></div>
+      <label class="switch-row" for="set-hide"><span>Hide album names and covers</span><input type="checkbox" id="set-hide" role="switch"${HIDE ? " checked" : ""}><span class="switch" aria-hidden="true"></span></label>
+      <label class="switch-row" for="set-hide-art"><span>Hide artist names and photos</span><input type="checkbox" id="set-hide-art" role="switch"${HIDE_ART ? " checked" : ""}><span class="switch" aria-hidden="true"></span></label>
+      <label class="switch-row" for="set-hide-desc"><span>Hide descriptions</span><input type="checkbox" id="set-hide-desc" role="switch"${HIDE_DESC ? " checked" : ""}><span class="switch" aria-hidden="true"></span></label></div>
     <div class="field"><label>Downloads</label><div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap"><span>${plural(DL.size, "song")} · ${fmtBytes(dlBytes())} on this device</span>${DL.size ? `<button class="btn ghost" data-act="askremoveall" style="padding:8px 14px;font-size:12px">Remove all</button>` : ""}</div></div>
     <div class="muted" style="font-size:12px">Space plays or pauses. Shift + → and Shift + ← skip songs. / jumps to search.</div>
     <div class="modal-actions"><button class="btn ghost" data-act="signout">${icon("logout", 18)}Sign out</button><button class="btn" data-act="closemodal">Done</button></div>`);
   $("#set-q").addEventListener("change", e => { store.set("quality", +e.target.value); toast("Quality applies from the next song"); });
-  $("#set-hide").addEventListener("change", e => setHideAlbums(e.target.checked));
+  $("#set-hide").addEventListener("change", e => setPrivacy("albums", e.target.checked));
+  $("#set-hide-art").addEventListener("change", e => setPrivacy("artists", e.target.checked));
+  $("#set-hide-desc").addEventListener("change", e => setPrivacy("descriptions", e.target.checked));
 }
 
 /* ============ events ============ */

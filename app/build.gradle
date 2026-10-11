@@ -1,0 +1,35 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.spotiops.two'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.spotiops.two'
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName '2.0.0'
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            // Signed with the debug key so the release build installs without extra setup.
+            signingConfig signingConfigs.debug
+        }
+    }
+
+    lint {
+        // Don't let Play Store policy checks block a sideloaded build.
+        checkReleaseBuilds false
+        abortOnError false
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

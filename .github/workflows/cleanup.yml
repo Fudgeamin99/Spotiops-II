@@ -1,0 +1,29 @@
+name: One-off cleanup
+
+# Removes builds 7 and 8 (their releases, tags, build runs and build files).
+# This file is deleted again straight after it has run.
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Remove builds 7 and 8
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          for n in 7 8; do
+            gh release delete "build-$n" --cleanup-tag --yes || echo "release build-$n already gone"
+            gh api -X DELETE "repos/$GH_REPO/git/refs/tags/build-$n" 2>/dev/null || echo "tag build-$n already gone"
+            for id in $(gh api "repos/$GH_REPO/actions/workflows/build-apk.yml/runs?per_page=100" --jq ".workflow_runs[] | select(.run_number == $n) | .id"); do
+              gh api -X DELETE "repos/$GH_REPO/actions/runs/$id" && echo "deleted build run $n"
+            done
+          done
+          echo "Releases now:"; gh release list

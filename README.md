@@ -1,7 +1,32 @@
-# Spotiops II for Android
+# Spotiops II
 
-This folder is the Android app version of Spotiops II. It wraps the same player
-you use in the browser (`app/src/main/assets/index.html`) and adds:
+A music player for your own Jellyfin server, with offline downloads, synced
+lyrics and a privacy mode. It runs as an Android app and in any web browser.
+
+<p align="center">
+  <img src="screenshots/desktop-album.png" alt="Album page on a computer, with synced lyrics" width="100%">
+</p>
+
+<p align="center">
+  <img src="screenshots/phone-home.png" alt="Home screen" width="32%">
+  <img src="screenshots/phone-album.png" alt="Album page with downloaded songs" width="32%">
+  <img src="screenshots/phone-player.png" alt="Now playing" width="32%">
+</p>
+<p align="center">
+  <img src="screenshots/phone-lyrics.png" alt="Synced lyrics" width="32%">
+  <img src="screenshots/phone-library.png" alt="Your Library, including downloads" width="32%">
+  <img src="screenshots/phone-search.png" alt="Browse by genre" width="32%">
+</p>
+<p align="center">
+  <img src="screenshots/desktop-home.png" alt="Home screen on a computer" width="100%">
+</p>
+
+<sub>Screenshots use a made-up demo library: the artists, albums, cover art and lyrics are invented.</sub>
+
+## What the Android app adds
+
+The app wraps the same player you use in the browser
+(`app/src/main/assets/index.html`) and adds:
 
 - music that keeps playing when you leave the app or lock the screen
 - a playback notification plus lock-screen and headphone controls

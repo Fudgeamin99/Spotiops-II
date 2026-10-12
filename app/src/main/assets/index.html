@@ -101,6 +101,9 @@ img { max-width: 100%; display: block; }
 .btn.ghost { background: var(--panel-3); color: var(--fg); }
 .btn.ghost:hover { background: #26303a; }
 .err { color: var(--danger); font-size: 14px; min-height: 1em; }
+.field-hint { font-size: 13px; color: var(--muted); }
+.change-server { justify-self: center; font: 12px var(--font-mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); padding: 4px 8px; }
+.change-server:hover { color: var(--accent); }
 .brand { display: flex; align-items: center; gap: 10px; font: 400 20px/1 var(--font-stencil); letter-spacing: .06em; text-transform: uppercase; }
 .brand b { font-weight: 400; color: var(--accent); }
 .brand .mark { width: 30px; height: 30px; flex: none; }
@@ -588,9 +591,10 @@ input[type=range]:hover::-webkit-slider-thumb { background: var(--accent-hi); }
       <h1>Connect to your music server</h1>
       <p style="margin-top:8px">Sign in with your Jellyfin account to stream your library.</p>
     </div>
-    <div class="field">
+    <div class="field" id="server-field">
       <label for="f-server">Server address</label>
       <input id="f-server" type="url" inputmode="url" autocomplete="url" placeholder="http://192.168.1.20:8096" required>
+      <span class="field-hint">You only need to enter this once. Spotiops II remembers it on this device.</span>
     </div>
     <div class="field">
       <label for="f-user">Username</label>
@@ -602,6 +606,7 @@ input[type=range]:hover::-webkit-slider-thumb { background: var(--accent-hi); }
     </div>
     <div class="err" id="login-err" role="alert"></div>
     <button class="btn" id="login-btn" type="submit">Connect</button>
+    <button type="button" class="change-server" id="change-server" hidden>Use a different server</button>
   </form>
 </section>
 
@@ -2269,10 +2274,18 @@ function signOut(msg) {
   P.queue = []; P.idx = -1;
   showLogin(server, user, msg);
 }
+// The server address is asked for once and remembered on this device,
+// so after the first sign-in only username and password appear.
+function showServerField(show) {
+  $("#server-field").hidden = !show;
+  $("#change-server").hidden = show;
+}
 function showLogin(server, user, msg) {
   $("#app").hidden = true; $("#sheet").hidden = true; $("#login").hidden = false;
   document.title = "Spotiops II";
-  $("#f-server").value = server || store.get("lastServer", "");
+  const remembered = server || store.get("lastServer", "");
+  $("#f-server").value = remembered;
+  showServerField(!remembered);
   $("#f-user").value = user || store.get("lastUser", "");
   $("#login-err").textContent = msg || "";
   ($("#f-server").value ? $("#f-user").value ? $("#f-pass") : $("#f-user") : $("#f-server")).focus();
@@ -2295,7 +2308,9 @@ $("#login-form").addEventListener("submit", async e => {
     $("#f-pass").value = ""; startApp();
   } catch (x) {
     err.textContent = x.network
-      ? "Couldn't reach that server. Check the address and port, and that this device is on the same network (or the server is reachable from the internet)."
+      ? ($("#server-field").hidden
+        ? "Couldn't reach your music server. Make sure this device is on the same Wi-Fi network as the server."
+        : "Couldn't reach that server. Check the address and port, and that this device is on the same network (or the server is reachable from the internet).")
       : x.status === 401 ? "Wrong username or password." : `Sign-in failed: ${x.message}.`;
   } finally { btn.disabled = false; btn.textContent = "Connect"; }
 });
@@ -2329,6 +2344,9 @@ window.addEventListener("online", () => { if (S && !ONLINE) { loadLibrary(); ren
 bindSeek($("#seek"));
 $("#lib-q").value = "";
 
+$("#change-server").addEventListener("click", () => { showServerField(true); $("#f-server").focus(); $("#f-server").select(); });
+// Keep the remembered address in step with the signed-in session.
+if (S && S.server) store.set("lastServer", S.server);
 if (S && S.token) startApp(); else showLogin();
 </script>
 </body>

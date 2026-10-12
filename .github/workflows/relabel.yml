@@ -1,7 +1,7 @@
 name: One-off relabel
 
 # Marks every build before build 12 as a beta pre-release.
-# Runs once when the relabel-run tag is created; this file is deleted straight after.
+# Runs once when the relabel-run branch is created; this file is deleted straight after.
 on:
   create:
 
@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   relabel:
-    if: github.ref == 'refs/tags/relabel-run'
+    if: github.ref == 'refs/heads/relabel-run'
     runs-on: ubuntu-latest
     steps:
       - name: Relabel builds before 12 as beta
@@ -28,5 +28,5 @@ jobs:
               echo "relabelled $tag"
             fi
           done
-          gh api -X DELETE "repos/$GH_REPO/git/refs/tags/relabel-run" || true
+          gh api -X DELETE "repos/$GH_REPO/git/refs/heads/relabel-run" || true
           gh release list --limit 20
